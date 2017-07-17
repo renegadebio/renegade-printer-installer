@@ -109,7 +109,7 @@ function installDymo(uri, cb) {
     if(err) return cb(err);
     if(isInstalled) return cb(new Error("Already installed"));
     
-    console.log("Installed");
+    throw new Error("NOT IMPLEMENTED!")
 
   });
 }

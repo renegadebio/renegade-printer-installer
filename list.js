@@ -76,28 +76,32 @@ function listCUPS(cb) {
 }
 
 
-function list() {
-  listDev(function(err, devices) {
-    if(err) {
-      console.error(err);
-      process.exit(1);
-    }
+function list(cb) {
+  listDev(function(err, directDevices) {
+    if(err) return cb(err);
 
-    console.log(devices);
+    listCUPS(function(err, cupsDevices) {
+      if(err) return cb(err);
 
-    listCUPS(function(err, devices) {
-      if(err) {
-        console.error(err);
-        process.exit(1);
-      }
+      var devices = {
+        direct: directDevices,
+        cups: cupsDevices
+      };
 
-      console.log(devices);
-
+      cb(null, devices);
     });
   });
 }
 
+function init() {
+  list(function(err, devices) {
+    if(err) {
+      console.error(err);
+      process.exit(1);
+    }
+    console.log(devices);
+  });
+}
 
 
-
-list();
+init();
