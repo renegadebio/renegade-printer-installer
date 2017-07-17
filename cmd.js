@@ -4,7 +4,6 @@ var fs = require('fs');
 var path = require('path');
 var exec = require('child_process').exec;
 var async = require('async');
-var userid = require('userid');
 var usbDetect = require('usb-detection');
 
 var udevDir = "/etc/udev/rules.d";
@@ -140,35 +139,6 @@ function installPrinter(vendor, serial, cb) {
   });
 }
 
-// check if the bionet udev rule exists and is writable
-function checkUdevPermissions() {
-
-  try {
-    fs.accessSync(udevDir, fs.constants.X_OK | fs.constants.R_OK | fs.constants.W_OK);
-    var stats = fs.statSync(udevDir);
-
-    if(!stats.isDirectory()) {
-      console.error("The udev rule directory exists but is not a directory!");
-      console.error("Something is very odd about your system and I have no idea how to proceed.");
-      console.error("");
-      return false;
-    }
-
-  } catch(err) {
-
-    console.error("I need access to the udev rules directory /dev/udev/rules.d/");
-    console.error("in order to add rules for new printers as they are plugged in for the first time.");
-    console.error("To grant me access run this:");
-    console.error("  sudo chgrp " + userid.groupname(process.getegid()) + " " + udevDir);
-    console.error("  sudo chmod 775 " + udevDir);
-    console.error("");
-    return false;
-  }
-  
-  return true;
-  
-}
-
 function isDeviceSupported(device) {
   if(supportedDevices[device.manufacturer.toLowerCase()]) {
 
@@ -181,10 +151,12 @@ function isDeviceSupported(device) {
 
 
 function init() {
-  if(!checkUdevPermissions()) {
+  if(process.geteuid() !== 0) {
+    console.error("You must run this program as root");
+    console.error("since it needs to modify /etc/udev/rules.d/");
+    console.error("and run `udevadm trigger` as root");
     usbDetect.stopMonitoring();
     process.exit(1);
-    return;
   }
 
   console.log("Waiting for new printers to be plugged in.");
@@ -206,3 +178,5 @@ function init() {
 }
 
 init();
+
+
