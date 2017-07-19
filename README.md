@@ -1,5 +1,4 @@
 
-
 # requirements
 
 ```
@@ -7,9 +6,9 @@ sudo apt install build-essential libudev-dev
 npm install 
 ```
 
-`cmd.js`: Run this at root. Detects devices being plugged in and installs them.
+`./bin/cmd.js`: Run this at root. Detects devices being plugged in and installs them.
 
-`list.js`: Run this as the bionet user. Lists devices that are both installed and plugged in.
+`./bin/list.js`: Run this as the bionet user. Lists devices that are both installed and plugged in.
 
 # ToDo
 
@@ -31,3 +30,8 @@ lpinfo -m
 
 We need to use the `.find` function from the `usb-detection` module.
 
+# Copyright and License
+
+Copyright 2017 BioBricks Foundation
+
+License: Dual-licensed under GPLv3 and AGPLv3. You may use this software under the terms of either or both as you prefer.
