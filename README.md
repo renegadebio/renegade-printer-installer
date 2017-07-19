@@ -12,23 +12,40 @@ npm install
 
 # ToDo
 
-## Dymo printers are currently detected but not installed
+* Integrate this into bionet labdevice daemon
 
-We need to run something like:
+# Useful CUPS commands
+
+To list all installed printers:
+
+```
+lpstat -v
+```
+
+To list all currently connected USB printers (not limited to installed printers):
+
+```
+lpinfo -v|grep "usb://"
+```
+
+To install a printer do e.g.:
 
 ```
 sudo lpadmin -p "LabelWriter-450-turbo" -E -v usb://DYMO/LabelWriter%20450%20Turbo?serial=13011612335742 -m lw450t.ppd
 ```
 
-but in order to do that we need detect the `-m` argument by trying to match the name of the printer to one of the installed drivers as listed by:
+To list all printer drivers (for the `-m` argument in `lpadmin -p`):
 
 ```
 lpinfo -m
 ```
 
-## Printers that were already plugged in on boot are not detected
 
-We need to use the `.find` function from the `usb-detection` module.
+To remove a printer then do e.g:
+
+```
+sudo lpadmin -x LabelWriter-450-turbo
+```
 
 # Copyright and License
 

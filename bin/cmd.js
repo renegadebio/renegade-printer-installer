@@ -64,7 +64,7 @@ function isBrotherInstalled(vendor, serial, cb) {
 function installBrother(vendor, serial, cb) {
   isBrotherInstalled(vendor, serial, function(err, isInstalled) {
     if(err) return cb(err);
-    if(isInstalled) return cb(new Error("Already installed"));
+    if(isInstalled) return cb();
   });
 
   var elements = [];
@@ -82,7 +82,7 @@ function installBrother(vendor, serial, cb) {
     exec("udevadm trigger ", function(err, stdout, stderr) {
       if(err) return cb(err + "\n" + stderr);  
       
-      cb();
+      cb(null, true);
     });
   });
 }
@@ -96,7 +96,7 @@ function isDymoInstalled(uri, cb) {
     var lines = stdout.split(/\r?\n/);
     var i, m;
     for(i=0; i < lines.length; i++) {
-      if(lines[i].match(uri)) {
+      if(lines[i].indexOf(uri) >= 0) {
         return cb(null, true);
       }
     }
@@ -104,22 +104,53 @@ function isDymoInstalled(uri, cb) {
   });
 }
 
-function installDymo(uri, cb) {
+function cupsFindDriver(model, cb) {
+
+  var r = new RegExp("^([^\s]+)\.ppd.+"+model+"\s*$", 'i');
+
+  // list all installed drivers
+  exec("lpinfo -m", {maxBuffer: 1024 * 2000}, function(err, stdout, stderr) {
+    if(err) return cb(err + "\n" + stderr);
+    var lines = stdout.split(/\r?\n/);
+    var i, m, line;
+    for(i=0; i < lines.length; i++) {
+      line = lines[i].toLowerCase();
+      if(m = line.match(r)) {
+        return cb(null, m[1]); // m[1] is the driver name
+      }
+    }
+    return cb();
+  });
+}
+
+function installDymo(uri, model, serial, cb) {
+  if(uri.match('"') || model.match('"') || serial.match('"')) {
+    return cb(new Error('uri, model or serial of usb device contained a " (double-quotes) character. This would result in badness and could be an attempt at accomplishing something malicious.'));
+  }
+
   isDymoInstalled(uri, function(err, isInstalled) {
     if(err) return cb(err);
-    if(isInstalled) return cb(new Error("Already installed"));
+    if(isInstalled) return cb();
     
-    throw new Error("NOT IMPLEMENTED!")
+    cupsFindDriver(model, function(err, driverName) {
+      if(err) return cb(err);
+      if(!driverName) return cb(new Error("No driver found for printer:", model, uri));
+      var printerName = model.replace(/\s+/g, '-') + '-' + serial;
 
+      exec('lpadmin -p "'+printerName+'" -E -v "'+uri+'" -m "'+driverName+'.ppd"', function(err, stdout, stderr) {
+        if(err) return cb(err + "\n" + stderr);
+        cb(null, true);
+      }); 
+    });
   });
 }
 
 
 // vendor is "brother" or "dymo"
-function installPrinter(vendor, serial, cb) {
+function installPrinter(vendor, model, serial, cb) {
   vendor = vendor.toLowerCase();
+  model = model.replace(/_/g, ' ');
 
-  console.log(vendor, serial);
   var r = new RegExp("usb://"+vendor+".+serial="+serial, 'i')
   
   // list all connected printers
@@ -132,7 +163,7 @@ function installPrinter(vendor, serial, cb) {
         if(vendor === 'brother') {
           return installBrother(vendor, serial, cb);
         } else {
-          return installDymo(m[0], cb);
+          return installDymo(m[0], model, serial, cb);
         }
       }
     }
@@ -150,6 +181,27 @@ function isDeviceSupported(device) {
 }
 
 
+function onDetectPrinter(device, cb) {
+  if(!isDeviceSupported(device)) {
+    if(cb) cb();
+    return;
+  }
+  
+  installPrinter(device.manufacturer, device.deviceName, device.serialNumber, function(err, installed) {
+    if(err) {
+      console.error("Installing printer failed:", device, "\n", err);
+      if(cb) cb();
+      return;
+    }
+    if(installed) {
+      console.log("Successfully installed printer:", device);
+    } else {
+      console.log("Printer was already installed:", device);
+    }
+    if(cb) cb();
+  });
+}
+
 function init() {
   if(process.geteuid() !== 0) {
     console.error("You must run this program as root");
@@ -159,22 +211,21 @@ function init() {
     process.exit(1);
   }
 
-  console.log("Waiting for new printers to be plugged in.");
+  console.log("Checking for already connected printers")
 
-  // Detect add/insert
-  usbDetect.on('add', function(device) {
-    if(!isDeviceSupported(device)) return;
+  // detect USB devices that are already connected
+  usbDetect.find(function(err, devices) { 
+    if(err) return console.error("Error finding usb devices:", err);
 
+    async.eachSeries(devices, onDetectPrinter, function() {
 
-    installPrinter(device.manufacturer, device.serialNumber, function(err) {
-      if(err) {
-        console.error("Installing printer failed:", device, "\n", err);
-        return;
-      }
-      console.log("Installed printer:", device);
+      console.log("Waiting for new printers to be plugged in.");
+
+      // detect new USB devices as they are plugged in
+      usbDetect.on('add', onDetectPrinter);
     });
-    
   });
+
 }
 
 init();
