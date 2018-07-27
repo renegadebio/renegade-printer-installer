@@ -6,7 +6,7 @@
   },
   "dependencies": {
     "async": "^2.5.0",
-    "usb-detection": "^1.4.0"
+    "usb-detection": "^3.2.0"
   },
   "devDependencies": {},
   "license": "(GPL-3.0 OR AGPL-3.0)"

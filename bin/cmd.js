@@ -222,7 +222,9 @@ function init() {
       console.log("Waiting for new printers to be plugged in.");
 
       // detect new USB devices as they are plugged in
+      usbDetect.startMonitoring();
       usbDetect.on('add', onDetectPrinter);
+      
     });
   });
 
