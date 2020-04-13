@@ -105,8 +105,8 @@ function isDymoInstalled(uri, cb) {
 }
 
 function cupsFindDriver(model, cb) {
-
-  var r = new RegExp("^([^\s]+)\.ppd.+"+model+"\s*$", 'i');
+  var modelReg = model.replace(/\s+/g, "\\s+");
+  var r = new RegExp("^([^\s]+)\.ppd.+"+modelReg+"\s*$", 'i');
 
   // list all installed drivers
   exec("lpinfo -m", {maxBuffer: 1024 * 2000}, function(err, stdout, stderr) {
@@ -114,7 +114,8 @@ function cupsFindDriver(model, cb) {
     var lines = stdout.split(/\r?\n/);
     var i, m, line;
     for(i=0; i < lines.length; i++) {
-      line = lines[i].toLowerCase();
+      line = lines[i];
+      console.log("LINE:", line);
       if(m = line.match(r)) {
         return cb(null, m[1]); // m[1] is the driver name
       }
@@ -152,7 +153,7 @@ function installPrinter(vendor, model, serial, cb) {
   model = model.replace(/_/g, ' ');
 
   var r = new RegExp("usb://"+vendor+".+serial="+serial, 'i')
-  
+  console.log("VENDER:", vendor, "||", model, "||", serial);
   // list all connected printers
   exec("lpinfo -v", function(err, stdout, stderr) {
     if(err) return cb(err + "\n" + stderr);
@@ -186,7 +187,7 @@ function onDetectPrinter(device, cb) {
     if(cb) cb();
     return;
   }
-  
+  console.log("GOT:", device);
   installPrinter(device.manufacturer, device.deviceName, device.serialNumber, function(err, installed) {
     if(err) {
       console.error("Installing printer failed:", device, "\n", err);
