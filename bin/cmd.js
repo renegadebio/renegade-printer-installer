@@ -55,6 +55,7 @@ function exec(cmd, opts, cb) {
   }
   if(argv.fake) {
     debug("--fake enabled so not actually running command:", cmd);
+    return cb();
   } else {
     debug("Running command:", cmd);
   }
@@ -270,7 +271,7 @@ function cupsFindDriver(model, cb) {
   debug("(please stand by, this can take a while)");
   
   // list all installed drivers
-  exec(cmd, {maxBuffer: 1024 * 2000}, function(err, stdout, stderr) {
+  doExec(cmd, {maxBuffer: 1024 * 2000}, function(err, stdout, stderr) {
     if(err) return cb(err + "\n" + stderr);
     var lines = stdout.split(/\r?\n/);
     var i, m, line;
@@ -326,10 +327,15 @@ function fixManualCopies(printerName, cb) {
     data = lines.join("\n");
     debug("  Writing:", filename);
     if(argv.fake) {
-      debug(  "(--fake in effect so not actually writing)");
+      debug(  "--fake enabled so not actually writing");
       return cb();
     }
-    fs.writeFile(filename, data, {encoding: 'utf8'}, cb);
+    fs.writeFile(filename, data, {encoding: 'utf8'}, function(err) {
+      if(err) return cb();
+
+      debug("Asking CUPS daemon to reload");
+      exec(CUPS_RELOAD_COMMAND, cb);
+    });
   });
 }
 
