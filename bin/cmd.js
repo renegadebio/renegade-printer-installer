@@ -356,7 +356,7 @@ function getUsbURI(device, cb) {
         return cb(null, uri);
       }
     }
-    return cb(new Error("Printer with vendor '"+vendor+"' and serial '"+serial+"' not detected by CUPS. Maybe don't use the --use-usb-uri argument"));
+    return cb(new Error("Printer with vendor '"+device.manufacturer+"' and serial '"+device.serialNumber+"' not detected by CUPS. Maybe don't use the --use-usb-uri argument"));
   });
 
 }
