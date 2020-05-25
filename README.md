@@ -17,14 +17,17 @@ npm install
 ```
 --debug: Enable debug output
 --fake: Don't actually install anything
+--fix-manual-copies: Set '*cupsManualCopies: True' in installed .ppd files
 --use-usb-uri: Install printers using 'usb:' URIs intead of 'file:' URIs (experimental)
 --no-check-cups: Don't check CUPS config for FileDevice line
---uninstall-all: Uninstall all CUPS printers installed by this program (not yet working)
+--uninstall-all: Uninstall all CUPS printers installed by this program (not yet implemented)
 ```
+
+The `--fix-manual-copies` argument is recommended if you use DYMO LabelWriter printers. It appears that printing multiple copies to the same printer is broken per default, but setting `*cupsManualCopies: True` in the `.ppd` file fixes this. This has to be done for every installed printer. This argument will automatically modify the `.ppd` files in this way for all installed printers. This assumed your installed `.ppd` files are in `/etc/cups/ppd/`.
 
 Some DYMO printers have an issue where CUPS detects the same wrong serial number no matter which printer is plugged in. For this reason we default to using `file:` URIs for DYMO printers, but if you want to use `usb:` URIs then you can try the `--use-usb-uri` argument. This currently has not been sufficiently tested.
 
-Warning: `--uninstall-all` uses `/dev/printers/` to determine which printers were installed by this program. It assumes the last part of each file name before the `.rules` is the printer's serial number and the first part is the printer's vendor. If you have anything else in this directory that wasn't installed by this program but follows this pattern then it could be removed when running with this argument.
+Warning: `--uninstall-all` uses `/dev/printers/` to determine which printers were installed by this program. It assumes the last part of each file name before the `.rules` is the printer's serial number. If you have anything else in this directory that wasn't installed by this program but follows this pattern then it could be removed when running with this argument.
 
 # Setup
 

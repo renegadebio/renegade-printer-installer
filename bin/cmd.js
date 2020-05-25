@@ -16,12 +16,16 @@ const argv = minimist(process.argv.slice(2), {
   },
   boolean: [
     'debug',
+    'fake',
+    'fix-manual-copies', // Set '*cupsManualCopies: True' in installed .ppd files
     'use-usb-uri', // install printers using file: URIs
-    'uninstall-all'
+    'uninstall-all' // not yet implemented
   ]
 });
 
 var CUPS_FILES_CONFIG_PATH = '/etc/cups/cups-files.conf';
+var CUPS_PPD_PATH = '/etc/cups/ppd';
+var CUPS_RELOAD_COMMAND = '/etc/init.d/cups reload';
 var DEV_SUBDIR = 'printers';
 var DEV_DIR = path.join('/dev', DEV_SUBDIR);
 
@@ -58,7 +62,7 @@ function exec(cmd, opts, cb) {
 }
 
 function uninstallAll() {
-  console.log("TODO not fully implemented");
+  throw new Error("TODO not fully implemented");
   
   fs.readdir(UDEV_DIR, function(err, files) {
     if(err) return cb(err);
@@ -295,6 +299,40 @@ function activateCupsPrinter(printerName, cb) {
   });
 }
 
+function fixManualCopies(printerName, cb) {
+  var filename = path.join(CUPS_PPD_PATH, printerName+'.ppd');
+  var r = new RegExp(/^\s*\*cupsManualCopies:\s+False/);
+
+  debug("Reading:", filename);
+  fs.readFile(filename, {encoding: 'utf8'}, function(err, data) {
+    if(err) return cb(err);
+
+    var found;
+    var lines = data.split(/\r?\n/);
+    var i, line, m;
+    for(i=0; i < lines.length; i++) {
+      line = lines[i];
+      if(line.match(r)) {
+        lines[i] = "*cupsManualCopies: True";
+        debug("  Found a `*cupsManualCopies: False` line... Fixing it");
+        found = true;
+        break;
+      }
+    }
+
+    if(!found) {
+      return cb();
+    }
+    data = lines.join("\n");
+    debug("  Writing:", filename);
+    if(argv.fake) {
+      debug(  "(--fake in effect so not actually writing)");
+      return cb();
+    }
+    fs.writeFile(filename, data, {encoding: 'utf8'}, cb);
+  });
+}
+
 function installCups(device, cb) {
 
   getURI(device, function(err, uri) {
@@ -323,7 +361,16 @@ function installCups(device, cb) {
             if(err) return cb(err + "\n" + stderr);
 
             activateCupsPrinter(printerName, function(err) {
-              cb(null, true);
+              if(err) return cb(err);
+              
+              if(!argv['fix-manual-copies']) {
+                return cb(null, true);
+              }
+              fixManualCopies(printerName, function(err) {
+                if(err) return cb(err);
+
+                cb(null, true);
+              });
             });
           });
         });
