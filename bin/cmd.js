@@ -27,10 +27,12 @@ var DEV_DIR = path.join('/dev', DEV_SUBDIR);
 
 var supportedDevices = {
   brother: [
-
+    0x2028, // QL-570
+    0x2042 // QL-700
   ],
   dymo: [
-    0x0922
+    0x0020, // LabelWriter 450
+    0x0021 // LabelWriter 450 Turbo
   ]
 }
 
@@ -100,8 +102,8 @@ function udevCheckLine(line, vendorID, serial) {
   return true;
 }
 
-function isUdevInstalled(vendor, vendorID, serial, cb) {
-  var rulesRegexp = new RegExp("^"+vendor+"-.+\.rules$");
+function isUdevInstalled(device, cb) {
+  var rulesRegexp = new RegExp("^"+sanitize(device.manufacturer)+"-.+\.rules$");
   
   fs.readdir(UDEV_DIR, function(err, files) {
     if(err) return cb(err);
@@ -116,7 +118,7 @@ function isUdevInstalled(vendor, vendorID, serial, cb) {
         
         for(i=0; i < lines.length; i++) {
 
-          if(udevCheckLine(lines[i], vendorID, serial)) {
+          if(udevCheckLine(lines[i], device.vendorId, serial)) {
             return cb(null, true);
           }
         }
@@ -127,20 +129,27 @@ function isUdevInstalled(vendor, vendorID, serial, cb) {
   });
 }
 
-function installUdevRule(vendor, vendorID, serial, cb) {
+function sanitize(str) {
+  str = str.replace(/\s+/g, '_');
+  str = str.replace(/[^a-zA-Z\d_\-]+/g, '');
+  return str;
+}
+
+function installUdevRule(device, cb) {
 
   var elements = [];
 
-  var vendorIDHex = vendorIDToHex(vendorID);
+  var vendorIDHex = vendorIDToHex(device.vendorId);
   
   elements.push('SUBSYSTEM=="usbmisc"');
   elements.push('ATTRS{idVendor}=="'+vendorIDHex+'"');
-  elements.push('ATTRS{serial}=="'+serial+'"');
-  elements.push('SYMLINK+="'+getUdevPath(vendor, serial)+'"');
+  elements.push('ATTRS{serial}=="'+device.serialNumber+'"');
+  elements.push('SYMLINK+="'+getUdevPath(device)+'"');
 
   var line = elements.join(", ")+"\n";
 
-  var fileToWrite = path.join(UDEV_DIR, vendor+'-'+serial+'.rules');
+
+  var fileToWrite = path.join(UDEV_DIR, sanitizedName(device)+'.rules');
 
   debug("Writing udev rule to", fileToWrite);
   debug("  rule:", line);
@@ -154,7 +163,7 @@ function installUdevRule(vendor, vendorID, serial, cb) {
     if(err) return cb(err);
 
     // let udev know we updated things
-    exec("udevadm trigger ", function(err, stdout, stderr) {
+    exec("udevadm trigger", function(err, stdout, stderr) {
       if(err) return cb(err + "\n" + stderr);  
       
       cb(null, true);
@@ -162,13 +171,14 @@ function installUdevRule(vendor, vendorID, serial, cb) {
   });
 }
 
-function installBrother(vendor, vendorID, serial, cb) {
-  isUdevInstalled(vendor, vendorID, serial, function(err, isInstalled) {
+function installBrother(device, cb) {
+
+  isUdevInstalled(device, function(err, isInstalled) {
     if(err) return cb(err);
     if(isInstalled) return cb();
   });
 
-  installUdevRule(vendor, vendorID, serial, cb);
+  installUdevRule(device, cb);
 }
 
 function uriType(uri) {
@@ -178,11 +188,15 @@ function uriType(uri) {
   return m[1];
 }
 
-function isCupsInstalled(uri, vendor, vendorID, serial, cb) {
+function sanitizedName(device) {
+  return sanitize(device.manufacturer) + '-' + sanitize(device.deviceName) + '-' + device.serialNumber;
+}
+
+function isCupsInstalled(device, uri, cb) {
 
   if(uriType(uri) === 'file') {
     
-    isUdevInstalled(vendor, vendorID, serial, cb);
+    isUdevInstalled(device, cb);
     return;
     
   } else {
@@ -241,7 +255,8 @@ function checkFileDevice(cb) {
 }
 
 function cupsFindDriver(model, cb) {
-  var modelReg = model.replace(/\s+/g, "\\s+");
+  
+  var modelReg = model.replace(/[\s_]+/g, "\\s+");
   var r = new RegExp("^([^\\s]+)\.ppd.+"+modelReg+"\\s*$", 'i');
 
   var cmd = "lpinfo -m";
@@ -280,30 +295,27 @@ function activateCupsPrinter(printerName, cb) {
   });
 }
 
-function installCups(vendor, vendorID, model, serial, cb) {
-  if(vendor.match('"') || model.match('"') || serial.match('"')) {
-    return cb(new Error('vendor, model or serial of usb device contained a " (double-quotes) character. This would result in badness and could be an attempt at accomplishing something malicious.'));
-  }
+function installCups(device, cb) {
 
-  getURI(vendor, serial, function(err, uri) {
+  getURI(device, function(err, uri) {
     if(err) return cb(err);
 
     debug("Device URI:", uri);
     
-    isCupsInstalled(uri, vendor, vendorID, serial, function(err, isInstalled) {
+    isCupsInstalled(device, uri, function(err, isInstalled) {
       if(err) return cb(err);
       
       debug("Is device already installed:", (isInstalled) ? "Yes" : "No");
       
       if(isInstalled) return cb();
-      
-      cupsFindDriver(model, function(err, driverName) {
-        if(err) return cb(err);
-        if(!driverName) return cb(new Error("No driver found for printer:", model, uri));
 
-        installUdevRule(vendor, vendorID, serial, function(err) {
+      cupsFindDriver(device.deviceName, function(err, driverName) {
+        if(err) return cb(err);
+        if(!driverName) return cb(new Error("No driver found for printer:", device.deviceName, uri));
+
+        installUdevRule(device, function(err) {
         
-          var printerName = model.replace(/\s+/g, '-') + '-' + serial;
+          var printerName = sanitizedName(device);
 
           var cmd = 'lpadmin -p "'+printerName+'" -E -v "'+uri+'" -m "'+driverName+'.ppd"';
           
@@ -320,18 +332,18 @@ function installCups(vendor, vendorID, model, serial, cb) {
   });
 }
 
-function getUdevPath(vendor, serial) {
-  return path.join(DEV_SUBDIR, vendor+'-'+serial);
+function getUdevPath(device) {
+  return path.join(DEV_SUBDIR, sanitize(device.manufacturer)+'-'+sanitize(device.deviceName)+'-'+device.serialNumber);
 }
 
-function getFileURI(vendor, serial, cb) {
-  var uri = 'file:'+path.join('/dev', getUdevPath(vendor, serial));
+function getFileURI(device, cb) {
+  var uri = 'file:'+path.join('/dev', getUdevPath(device));
   
   cb(null, uri);
 }
 
-function getUsbURI(vendor, serial, cb) {
-  var r = new RegExp("usb://"+vendor+".+serial="+serial, 'i')
+function getUsbURI(device, cb) {
+  var r = new RegExp("usb://"+device.manufacturer+".+serial="+device.serialNumber, 'i')
 
   // list all connected printers
   exec("lpinfo -v", function(err, stdout, stderr) {
@@ -349,28 +361,26 @@ function getUsbURI(vendor, serial, cb) {
 
 }
 
-function getURI(vendor, serial, cb) {
+function getURI(device, cb) {
 
   if(argv['use-usb-uri']) {
-    return getUsbURI(vendor, serial, cb);
+    return getUsbURI(device, cb);
   } else {
-    return getFileURI(vendor, serial, cb);
+    return getFileURI(device, cb);
   }
 }
 
 // vendor is "brother" or "dymo"
-function installPrinter(vendor, vendorID, model, serial, cb) {
-  vendor = vendor.toLowerCase();
-  model = model.replace(/_/g, ' ');
+function installPrinter(device, cb) {
 
-//  console.log("VENDOR:", vendor, "||", model, "||", serial);
+  var manufacturer = device.manufacturer.toLowerCase();
   
-  if(vendor === 'brother') {
-    return installBrother(vendor, vendorID, serial, cb);
-  } else if(vendor === 'dymo') {
-    return installCups(vendor, vendorID, model, serial, cb);
+  if(manufacturer === 'brother') {
+    return installBrother(device, cb);
+  } else if(manufacturer === 'dymo') {
+    return installCups(device, cb);
   } else {
-    return cb(new Error("Printer from unsupported vendor '"+vendor+"'"));
+    return cb(new Error("Printer from unsupported vendor '"+device.manufacturer+"'"));
   }
 }
 
@@ -391,8 +401,8 @@ function isDeviceSupported(device) {
   if(!manufacturer) {
     return false;
   }
-
-  if(manufacturer.indexOf(device.vendorId) < 0) {
+  
+  if(manufacturer.indexOf(device.productId) < 0) {
     return false
   }
   return true;
@@ -406,7 +416,7 @@ function onDetectPrinter(device, cb) {
   }
   console.log("Detected supported printer:", device);
   
-  installPrinter(device.manufacturer, device.vendorId, device.deviceName, device.serialNumber, function(err, installed) {
+  installPrinter(device, function(err, installed) {
     if(err) {
       console.error("Installing printer failed:", device, "\n", err);
       if(cb) cb();
