@@ -123,7 +123,7 @@ function isUdevInstalled(device, cb) {
         
         for(i=0; i < lines.length; i++) {
 
-          if(udevCheckLine(lines[i], device.vendorId, serial)) {
+          if(udevCheckLine(lines[i], device.vendorId, device.serialNumber)) {
             return cb(null, true);
           }
         }
